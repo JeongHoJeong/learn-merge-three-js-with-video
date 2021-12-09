@@ -1,0 +1,17 @@
+{
+  "name": "learn-nut",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "main": "esr main.ts"
+  },
+  "dependencies": {
+    "aperture": "^6.1.0",
+    "esbuild-runner": "^2.2.1",
+    "puppeteer": "^12.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.14.2"
+  }
+}
