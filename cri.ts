@@ -1,38 +1,63 @@
-import fs from 'fs'
+import * as fs from 'fs'
 import { spawn } from 'child_process'
 
 import CDP from 'chrome-remote-interface'
 import ChromeLauncher from 'chrome-launcher'
 
-async function sleep(timeout: number) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(undefined)
-    }, timeout)
+async function exceptionlessUnlink(file: string) {
+  try {
+    await fs.promises.unlink(file)
+  } catch (e) {}
+}
+
+/** https://github.com/cyrus-and/chrome-remote-interface/wiki/Wait-for-a-specific-element */
+async function messageArrives(client: CDP.Client, eventName: string) {
+  const browserCode = (_eventName: string) => {
+    return new Promise((resolve) => {
+      const listener = (e: MessageEvent) => {
+        if (e.data === _eventName) {
+          window.removeEventListener('message', listener)
+          resolve(undefined)
+        }
+      }
+      window.addEventListener('message', listener)
+    })
+  }
+
+  const { Runtime } = client
+  await Runtime.evaluate({
+    expression: `(${browserCode})(${JSON.stringify(eventName)})`,
+    awaitPromise: true,
+  })
+}
+
+async function postMessageToBrowser(client: CDP.Client, eventName: string) {
+  return client.Runtime.evaluate({
+    expression: `window.postMessage(${JSON.stringify(eventName)})`,
   })
 }
 
 ;(async () => {
   const chrome = await ChromeLauncher.launch({
-    startingUrl: 'https://www.youtube.com/watch?v=H-NKIfnB2l8&t=6s',
-    chromeFlags: ['--window-size=1920,1080'],
+    startingUrl: 'http://localhost:8000',
+    chromeFlags: [
+      '--headless',
+      // https://github.com/puppeteer/puppeteer/issues/3637#issuecomment-918629028
+      '--use-gl=egl',
+      '--window-size=640,360',
+    ],
   })
 
   const client = await CDP({
     port: chrome.port,
   })
 
-  const { Network, Page } = client
+  const { Network, Page, Runtime } = client
   await Network.enable({})
   await Page.enable()
-  await Page.startScreencast({
-    format: 'jpeg',
-    everyNthFrame: 1,
-  })
+  await Runtime.enable()
 
-  try {
-    await fs.promises.unlink('record.mp4')
-  } catch (e) {}
+  await exceptionlessUnlink('record.mp4')
 
   const ffmpeg = spawn('ffmpeg', [
     '-f',
@@ -47,20 +72,27 @@ async function sleep(timeout: number) {
     'libx264',
     'record.mp4',
   ])
-  ffmpeg.stderr.setEncoding('utf-8')
-  ffmpeg.stderr.on('data', (data) => {
-    console.log(data)
+  ffmpeg.stderr.pipe(process.stderr)
+
+  Runtime.on('consoleAPICalled', (e) => {
+    console.log(e.args[0]?.value)
   })
 
-  client.on('Page.screencastFrame', (data) => {
-    Page.screencastFrameAck({
-      sessionId: data.sessionId,
+  for (let i = 0; i < 500; i += 1) {
+    console.log(`frame: ${i}`)
+    // 클릭 이후 이벤트 핸들러가 붙기 전에 브라우저 단에서 처리가 끝날 수 있기 때문에, 핸들러를 먼저 붙입니다.
+    const promise = messageArrives(client, 'newFrame')
+    await postMessageToBrowser(client, 'goToNextFrame')
+
+    // 스크린샷을 찍기 전에 새 프레임의 랜더링이 끝나야 합니다.
+    await promise
+    const screenshot = await Page.captureScreenshot({
+      format: 'jpeg',
     })
-    ffmpeg.stdin.write(Buffer.from(data.data, 'base64'))
-  })
 
-  await sleep(5000)
-  await Page.stopScreencast()
+    ffmpeg.stdin.write(Buffer.from(screenshot.data, 'base64'))
+  }
+
   ffmpeg.stdin.end()
 
   await client.close()
