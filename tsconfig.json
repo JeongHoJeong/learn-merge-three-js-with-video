@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedParameters": true,
+    "noUnusedLocals": true,
+    "jsx": "react",
+    "esModuleInterop": true,
+    "allowJs": true
+  }
+}

@@ -4,17 +4,24 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "main": "esr main.ts"
+    "main": "esr main.ts",
+    "serve": "esbuild src/client.tsx --servedir=www --outdir=www/js --bundle"
   },
   "dependencies": {
+    "@react-three/fiber": "^7.0.21",
     "aperture": "^6.1.0",
     "chrome-launcher": "^0.15.0",
     "chrome-remote-interface": "^0.31.1",
     "esbuild-runner": "^2.2.1",
-    "puppeteer": "^12.0.1"
+    "puppeteer": "^12.0.1",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "three": "^0.135.0"
   },
   "devDependencies": {
     "@types/chrome-remote-interface": "^0.31.4",
+    "@types/react": "^17.0.37",
+    "@types/react-dom": "^17.0.11",
     "esbuild": "^0.14.2"
   }
 }

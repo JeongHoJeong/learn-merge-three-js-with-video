@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer'
 import _aperture from 'aperture'
-import fs from 'fs'
+import * as fs from 'fs'
 ;(async () => {
   const browser = await puppeteer.launch({
     executablePath:
@@ -21,7 +21,8 @@ import fs from 'fs'
     fps: 30,
     showCursor: false,
   })
-  await page.waitForTimeout(10000)
+  await page.waitForTimeout(6000)
+  fs.promises.unlink('./record.mp4')
   await fs.promises.rename(await aperture.stopRecording(), './record.mp4')
   await browser.close()
 })()
