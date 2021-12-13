@@ -1,6 +1,5 @@
 import * as React from 'react'
-// import React, { useRef, useState } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Canvas, useThree } from '@react-three/fiber'
 
 interface BoxRef {
   applyDelta(delta: number): void
@@ -16,7 +15,7 @@ function _Box(
   React.useImperativeHandle(ref, () => ({
     applyDelta(delta) {
       invalidate()
-      meshRef.current.rotation.x += delta * 10
+      meshRef.current.rotation.x += delta * 1
     },
   }))
 
@@ -46,7 +45,7 @@ const _ThreeCanvas = (_: unknown, ref: React.ForwardedRef<ThreeCanvasRef>) => {
   }))
 
   return (
-    <Canvas frameloop="demand">
+    <Canvas frameloop="demand" dpr={2}>
       <ambientLight />
       <pointLight position={[10, 10, 10]} />
       <Box ref={boxRef1} position={[-1.2, 0, 0]} />
@@ -55,19 +54,42 @@ const _ThreeCanvas = (_: unknown, ref: React.ForwardedRef<ThreeCanvasRef>) => {
   )
 }
 
-const FPS = 30
+const FPS = 24
 
 const ThreeCanvas = React.forwardRef(_ThreeCanvas)
 
 export const App = () => {
+  const divRef = React.useRef<HTMLDivElement | null>(null)
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const threeCanvasRef = React.useRef<ThreeCanvasRef>(null)
 
+  const createNewFrameMarker = React.useCallback(() => {
+    if (divRef.current) {
+      return
+    }
+
+    const div = document.createElement('div')
+    div.id = 'seeked'
+    divRef.current = div
+    document.body.appendChild(div)
+  }, [])
+
   React.useEffect(() => {
+    const updateFrame = () => {
+      ;(videoRef.current as any).requestVideoFrameCallback(updateFrame)
+      createNewFrameMarker()
+    }
+    ;(videoRef.current as any).requestVideoFrameCallback(updateFrame)
+
     const listener = () => {
       if (videoRef.current) {
         threeCanvasRef.current?.applyDelta(1 / FPS)
         videoRef.current.currentTime += 1 / FPS
+
+        if (divRef.current) {
+          document.body.removeChild(divRef.current)
+          divRef.current = null
+        }
       }
     }
 
@@ -84,7 +106,6 @@ export const App = () => {
         // https://gist.github.com/jsturgis/3b19447b304616f18657#file-gistfile1-txt-L4
         src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
         muted={true}
-        onSeeked={() => console.log('seeked')}
       />
       <div
         style={{

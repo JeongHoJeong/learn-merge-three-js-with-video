@@ -4,43 +4,65 @@ import { spawn } from 'child_process'
 import CDP from 'chrome-remote-interface'
 import ChromeLauncher from 'chrome-launcher'
 
-async function sleep(timeout: number) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(undefined)
-    }, timeout)
-  })
-}
-
 async function exceptionlessUnlink(file: string) {
   try {
     await fs.promises.unlink(file)
   } catch (e) {}
 }
 
+/** https://github.com/cyrus-and/chrome-remote-interface/wiki/Wait-for-a-specific-element */
+async function nodeAppears(client: CDP.Client, _selector: string) {
+  const browserCode = (selector: string) => {
+    return new Promise((fulfill) => {
+      new MutationObserver((mutations, observer) => {
+        const nodes: Node[] = []
+        mutations.forEach((mutation) => {
+          mutation.addedNodes.forEach((item) => {
+            nodes.push(item)
+          })
+        })
+
+        if (
+          nodes.find(
+            (node) => node instanceof Element && node.matches(selector)
+          )
+        ) {
+          observer.disconnect()
+          fulfill(undefined)
+        }
+      }).observe(document.body, {
+        childList: true,
+      })
+    })
+  }
+
+  const { Runtime } = client
+  await Runtime.evaluate({
+    expression: `(${browserCode})(${JSON.stringify(_selector)})`,
+    awaitPromise: true,
+  })
+}
+
 ;(async () => {
   const chrome = await ChromeLauncher.launch({
-    // startingUrl: 'https://www.youtube.com/watch?v=H-NKIfnB2l8&t=6s',
-    // startingUrl: 'https://threejs.org/examples/#webgl_animation_keyframes',
     startingUrl: 'http://localhost:8000',
-    // chromeFlags: ['--headless', '--window-size=1920,1080'],
-    // chromeFlags: ['--headless', '--window-size=960,540'],
-    // chromeFlags: ['--window-size=960,540'],
-    // https://github.com/puppeteer/puppeteer/issues/3637#issuecomment-918629028
-    chromeFlags: ['--headless', '--use-gl=egl', '--window-size=960,540'],
+    chromeFlags: [
+      '--headless',
+      // https://github.com/puppeteer/puppeteer/issues/3637#issuecomment-918629028
+      '--use-gl=egl',
+      '--window-size=640,360',
+    ],
   })
 
   const client = await CDP({
     port: chrome.port,
   })
 
-  const { Network, Page, Runtime, Input } = client
+  const { Network, Page, Input, Log, Runtime } = client
   await Network.enable({})
   await Page.enable()
-  // await Page.startScreencast({
-  //   format: 'jpeg',
-  //   everyNthFrame: 1,
-  // })
+  await Log.enable()
+  await Runtime.enable()
 
   await exceptionlessUnlink('record.mp4')
 
@@ -48,7 +70,7 @@ async function exceptionlessUnlink(file: string) {
     '-f',
     'image2pipe',
     '-framerate',
-    '30',
+    '24',
     '-c:v',
     'mjpeg',
     '-i',
@@ -59,17 +81,20 @@ async function exceptionlessUnlink(file: string) {
   ])
   ffmpeg.stderr.pipe(process.stderr)
 
-  // Runtime.evaluate({
-  //   expression: ''
-  // })
+  Runtime.on('consoleAPICalled', (e) => {
+    console.log(e.args[0]?.value)
+  })
 
-  for (let i = 0; i < 300; i += 1) {
+  for (let i = 0; i < 500; i += 1) {
     console.log(`frame: ${i}`)
+    // 클릭 이후 이벤트 핸들러가 붙기 전에 처리가 끝날 수 있기 때문에, 핸들러를 먼저 붙입니다.
+    const promise = nodeAppears(client, '#seeked')
     await Input.dispatchKeyEvent({
       key: 'A',
       type: 'keyDown',
     })
 
+    await promise
     const screenshot = await Page.captureScreenshot({
       format: 'jpeg',
     })
@@ -77,15 +102,6 @@ async function exceptionlessUnlink(file: string) {
     ffmpeg.stdin.write(Buffer.from(screenshot.data, 'base64'))
   }
 
-  // client.on('Page.screencastFrame', (data) => {
-  //   Page.screencastFrameAck({
-  //     sessionId: data.sessionId,
-  //   })
-  //   ffmpeg.stdin.write(Buffer.from(data.data, 'base64'))
-  // })
-
-  // await sleep(15000)
-  // await Page.stopScreencast()
   ffmpeg.stdin.end()
 
   await client.close()
