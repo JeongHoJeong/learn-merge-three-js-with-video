@@ -11,34 +11,22 @@ async function exceptionlessUnlink(file: string) {
 }
 
 /** https://github.com/cyrus-and/chrome-remote-interface/wiki/Wait-for-a-specific-element */
-async function nodeAppears(client: CDP.Client, _selector: string) {
-  const browserCode = (selector: string) => {
-    return new Promise((fulfill) => {
-      new MutationObserver((mutations, observer) => {
-        const nodes: Node[] = []
-        mutations.forEach((mutation) => {
-          mutation.addedNodes.forEach((item) => {
-            nodes.push(item)
-          })
-        })
-
-        if (
-          nodes.find(
-            (node) => node instanceof Element && node.matches(selector)
-          )
-        ) {
-          observer.disconnect()
-          fulfill(undefined)
+async function messageArrives(client: CDP.Client, eventName: string) {
+  const browserCode = (_eventName: string) => {
+    return new Promise((resolve) => {
+      const listener = (e: MessageEvent) => {
+        if (e.data === _eventName) {
+          window.removeEventListener('message', listener)
+          resolve(undefined)
         }
-      }).observe(document.body, {
-        childList: true,
-      })
+      }
+      window.addEventListener('message', listener)
     })
   }
 
   const { Runtime } = client
   await Runtime.evaluate({
-    expression: `(${browserCode})(${JSON.stringify(_selector)})`,
+    expression: `(${browserCode})(${JSON.stringify(eventName)})`,
     awaitPromise: true,
   })
 }
@@ -87,13 +75,14 @@ async function nodeAppears(client: CDP.Client, _selector: string) {
 
   for (let i = 0; i < 500; i += 1) {
     console.log(`frame: ${i}`)
-    // 클릭 이후 이벤트 핸들러가 붙기 전에 처리가 끝날 수 있기 때문에, 핸들러를 먼저 붙입니다.
-    const promise = nodeAppears(client, '#seeked')
+    // 클릭 이후 이벤트 핸들러가 붙기 전에 브라우저 단에서 처리가 끝날 수 있기 때문에, 핸들러를 먼저 붙입니다.
+    const promise = messageArrives(client, 'newFrame')
     await Input.dispatchKeyEvent({
       key: 'A',
       type: 'keyDown',
     })
 
+    // 스크린샷을 찍기 전에 새 프레임의 랜더링이 끝나야 합니다.
     await promise
     const screenshot = await Page.captureScreenshot({
       format: 'jpeg',

@@ -59,19 +59,11 @@ const FPS = 24
 const ThreeCanvas = React.forwardRef(_ThreeCanvas)
 
 export const App = () => {
-  const divRef = React.useRef<HTMLDivElement | null>(null)
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const threeCanvasRef = React.useRef<ThreeCanvasRef>(null)
 
   const createNewFrameMarker = React.useCallback(() => {
-    if (divRef.current) {
-      return
-    }
-
-    const div = document.createElement('div')
-    div.id = 'seeked'
-    divRef.current = div
-    document.body.appendChild(div)
+    window.postMessage('newFrame')
   }, [])
 
   React.useEffect(() => {
@@ -85,11 +77,6 @@ export const App = () => {
       if (videoRef.current) {
         threeCanvasRef.current?.applyDelta(1 / FPS)
         videoRef.current.currentTime += 1 / FPS
-
-        if (divRef.current) {
-          document.body.removeChild(divRef.current)
-          divRef.current = null
-        }
       }
     }
 
